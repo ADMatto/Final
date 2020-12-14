@@ -16,8 +16,8 @@ Precio contiene dos decimales"""
 
 import csv
 import os
-import time
 import re
+import shutil
 
 
 def validar_archivo_clientes(archivo="clientes.csv"):
@@ -52,15 +52,17 @@ def validar_archivo_clientes(archivo="clientes.csv"):
                             errores_correo += 1
     except IOError:
         print("El archivo que desea abrir, no existe o está corrupto!")
+        return False
     if len(lista_errores) > 1:
         print(f"Se encontraron {errores_docum + errores_vacio} errores en el documento '{archivo}':")
     elif not lista_errores:
         print(f"No se encontraron errores en el archivo {archivo}")
-        return
+        return True
     else:
         print(f"Se encontró {errores_docum + errores_vacio} error en el documento {archivo}:")
     for elemento in lista_errores:
         print(f"    Fila: {elemento[0]}, Campo: {elemento[1]}, Valor: {elemento[2]}")
+    return False
 
 
 def validar_archivo_viajes(archivo="viajes.csv"):
@@ -77,6 +79,9 @@ def validar_archivo_viajes(archivo="viajes.csv"):
                     errores_monto += 1
     except IOError:
         print("El archivo que desea abrir, no existe o está corrupto!")
+    if not lista_errores:
+        print(f"No se encontraron errores en el archivo {archivo}")
+        return True
     print(f"Se encontraron {errores_monto} errores del campo 'monto' en el archivo '{archivo}'")
     for elemento in lista_errores:
         print(f"    Fila: {elemento[0]}, Valor: {elemento[1]}")
@@ -87,6 +92,7 @@ def leer_archivo(archivo, campo='', buscar=''):
 
     lista = []
     fila_anterior = []
+    check = 0
     try:
 
         with open(archivo, encoding="utf8") as datos:
@@ -100,22 +106,23 @@ def leer_archivo(archivo, campo='', buscar=''):
                     if fila_anterior != fila[campo]:
                         lista.append(fila[campo])
                         fila_anterior = fila[campo]
-                else:
+                elif campo == "Empresa":
                     if str(buscar) in fila[campo]:
                         lista.append(list(fila.values()))
-                    elif str(buscar) in fila[campo].lower():
+                else:
+                    filtros = str(buscar).split()
+
+                    for filtro in filtros:
+                        if str(filtro) in fila[campo].lower():
+                            check += 1
+                    if check == len(filtros):
                         lista.append(list(fila.values()))
+                    check = 0
             return lista
 
     except IOError:
 
         print('Hubo un error al abrir el archivo!')
-
-
-def escribir_pantalla(campo, buscar, lista):
-    print(f"---------------Resultados para {campo}: {buscar} ----------------")
-    for elemento in lista:
-        print(elemento)
 
 
 def validacion_opciones(cantidad):
@@ -181,12 +188,35 @@ def total_viajes(documento):
         pass
     return suma, len(resultados)-1, resultados
 
+def remplazar_archivo(archivo):
+    valido = False
+    archivo_nuevo = input('Ingrese el nombre del nuevo archivo: ')
+    if archivo == "clientes.csv":
+        valido = validar_archivo_clientes(archivo_nuevo)
+    elif archivo == "viajes.csv":
+        valido = validar_archivo_viajes(archivo_nuevo)
+    if valido:
+        print("El archivo es valido para utilizar!")
+        respuesta = input("Hacer una copia de seguridad del archivo actual y remplazarlo por este? "
+                          "('ok' para confirmar): ")
+        if respuesta.lower() == 'ok':
+            with open(archivo, 'rb') as origen:
+                with open("old_"+archivo, 'wb') as destino:
+                    shutil.copyfileobj(origen, destino)
+                    print(f"Backup de {archivo} creado!")
+            with open(archivo_nuevo, 'rb') as origen:
+                with open(archivo, 'wb') as destino:
+                    shutil.copyfileobj(origen, destino)
+                    print(f"Se remplazo {archivo}")
+            input('\nPresione [Enter] para continuar...')
+
+    else:
+        print("El archivo tiene errores, no es valido!")
+
 def menu():
     backlog = ['------Log------']
     # falta manejar errores
     os.system('cls')
-    validar_archivo_clientes()
-    validar_archivo_viajes()
     while True:
 
         print('Bienvenido a Radio Taxi "El Papu"\n'
@@ -195,7 +225,8 @@ def menu():
               ' 2) Total de Usuarios por empresa\n'
               ' 3) Total de dinero por empresa\n'
               ' 4) Cantidad total de viajes y monto gastado\n'
-              ' 5) Salir')
+              ' 5) Salir\n'
+              ' 6) Subir nuevos archivos')
 
         opcion = validacion_opciones(6)
         if opcion == 1:
@@ -203,11 +234,14 @@ def menu():
             nombre = input("Ingrese el nombre del cliente: ").lower()
             resultados = leer_archivo("clientes.csv", "Nombre", nombre)
             if len(resultados) != 1:
-                escribir_pantalla("Nombre", nombre, resultados)
+
+                print(f"---------------Resultados para Nombre: {nombre} ----------------")
+                for elemento in resultados:
+                    print(elemento)
             else:
                 print(f"No se encontraron registros con '{nombre}'")
             input('\nPresione [Enter] para continuar...')
-            # buscar_cliente(nombre)
+
             backlog.append('Buscar Cliente')
 
         elif opcion == 2:
@@ -237,7 +271,6 @@ def menu():
                 except ValueError:
                     print("El documento debe ser un numero de 7 o 8 cifras.")
 
-            # escribir_pantalla("Documento", documento, resultados)
             print(f"------------------------------------------\n"
                   f"Documento: {documento}\n"
                   f"------------------------------------------")
@@ -263,20 +296,28 @@ def menu():
             with open("ejecuciones.log", "w") as log:
                 for accion in backlog:
                     log.writelines(accion + "\n")
-            print('Opcion 5 seleccionada!')
+            print('Backlog creado: "ejecuciones.log"')
             print('Cerrando programa...')
             return
 
         elif opcion == 6:
-
-            for accion in backlog:
-                print(accion)
-            input('Presione [Enter] para continuar...')
-
-        else:
-
-            print('El opcion ingresada no es valida!')
-            time.sleep(2)
+            backlog.append('Cambio y verificacion de Archivos')
+            print('Seleccione una opcion:\n'
+                  '1) Cambiar archivo clientes.csv\n'
+                  '2) Cambiar archivo viajes.csv\n'
+                  '3) Validar archivos\n'
+                  '4) Volver')
+            opcion_archivos = validacion_opciones(4)
+            if opcion_archivos == 1:
+                remplazar_archivo("clientes.csv")
+            elif opcion_archivos == 2:
+                remplazar_archivo("viajes.csv")
+            elif opcion_archivos == 3:
+                validar_archivo_viajes()
+                validar_archivo_clientes()
+                input('\nPresione [Enter] para continuar...')
+            else:
+                print("Accion cancelada!")
 
         os.system('cls')
 
